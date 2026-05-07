@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
   "assist": {
     "actions": {
       "source": {
@@ -83,7 +83,7 @@
         "noArrayIndexKey": "off",
         "noConsole": {
           "level": "error",
-          "options": { "allow": ["error", "info"] }
+          "options": { "allow": ["error", "info", "warn"] }
         },
         "noEvolvingTypes": "error",
         "noExplicitAny": "off",

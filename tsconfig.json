@@ -19,6 +19,9 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "skipLibCheck": true,
 
     // Best practices

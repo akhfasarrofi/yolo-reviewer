@@ -3,6 +3,9 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "yolo": "./src/cli/index.ts"
+  },
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
@@ -13,7 +16,9 @@
   },
   "dependencies": {
     "hono": "^4.12.17",
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "prompts": "^2.4.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
@@ -21,6 +26,7 @@
     "@commitlint/config-conventional": "^20.5.3",
     "@types/bun": "latest",
     "@types/js-yaml": "^4.0.9",
+    "@types/prompts": "^2.4.9",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "typescript": "^5"
