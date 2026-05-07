@@ -1,0 +1,2 @@
+# Prevent push if validation fails
+bun validate

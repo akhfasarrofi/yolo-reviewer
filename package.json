@@ -1,0 +1,33 @@
+{
+  "name": "ai-reviewer",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "biome check --write",
+    "prepare": "husky",
+    "validate": "bun typecheck && bun format"
+  },
+  "dependencies": {
+    "hono": "^4.12.17",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "typescript": "^5"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "biome check --write"
+    ]
+  }
+}
