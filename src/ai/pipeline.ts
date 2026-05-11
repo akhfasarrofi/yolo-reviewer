@@ -2,6 +2,7 @@ import { load } from 'js-yaml';
 import { reviewFile } from '@/ai/reviewer';
 import { embedHash, extractExistingHashes, generateHash } from '@/anti-spam/hash';
 import { getConfig } from '@/config';
+import { sendTelegramAlerts } from '@/notifications/telegram';
 import { addLinePrefix, buildParsedDiff, extractDiffContext } from '@/processor/line-prefix';
 import { extractScriptWithLinePreserve } from '@/processor/script-extract';
 import { isTrivialChange, isWhitespaceOnlyChange } from '@/processor/trivial';
@@ -203,6 +204,20 @@ export async function runReviewPipeline(
 
     await provider.postMRNote(projectId, mrIid, summaryBody);
     console.info(`[Yolo] 📝 Posting summary review: ${totalIssues} issues found.`);
+  }
+
+  // Telegram Notifications — only fires if configured in config.yml
+  const telegramConfig = config.notifications?.telegram;
+  if (telegramConfig && allValidComments.length > 0) {
+    await sendTelegramAlerts(
+      telegramConfig.bot_token,
+      telegramConfig.chat_id,
+      telegramConfig.trigger_categories,
+      repoName,
+      mrUrl,
+      mrIid,
+      allValidComments,
+    );
   }
 
   console.info(

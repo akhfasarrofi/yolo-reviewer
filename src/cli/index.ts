@@ -30,6 +30,11 @@ output:
           type: integer
           description: >
             Nomor baris pada diff yang memiliki issue.
+        category:
+          type: string
+          description: >
+            Kategori isu. Gunakan nama yang sesuai dengan file di .skills/
+            (misal: security, performance, clean-code, bug, style).
         issue:
           type: string
           description: >
@@ -45,6 +50,16 @@ output:
             Opsional.
             Berisi kode pengganti secara langsung tanpa markdown code block
             atau triple backticks.
+
+# Telegram Notifications (Optional)
+# Uncomment and fill in to enable Telegram alerts for specific issue categories.
+# notifications:
+#   telegram:
+#     bot_token: "YOUR_BOT_TOKEN"
+#     chat_id: "YOUR_CHAT_ID"
+#     trigger_categories:
+#       - security
+#       - critical
 
 instructions:
   - Hanya review code yang berubah
@@ -186,6 +201,32 @@ const AI_QUESTIONS: prompts.PromptObject[] = [
   },
 ];
 
+/** Optional Telegram notification setup */
+const TELEGRAM_QUESTIONS: prompts.PromptObject[] = [
+  {
+    initial: false,
+    message: 'Do you want to set up Telegram notifications? (optional)',
+    name: 'enableTelegram',
+    type: 'confirm',
+  },
+  {
+    message: 'Enter Telegram Bot Token',
+    name: 'telegramBotToken',
+    type: (_prev, values) => (values.enableTelegram ? 'text' : null),
+  },
+  {
+    message: 'Enter Telegram Chat ID',
+    name: 'telegramChatId',
+    type: (_prev, values) => (values.enableTelegram ? 'text' : null),
+  },
+  {
+    initial: 'security',
+    message: 'Enter trigger categories (comma-separated, e.g. security,critical)',
+    name: 'telegramCategories',
+    type: (_prev, values) => (values.enableTelegram ? 'text' : null),
+  },
+];
+
 // ─────────────────────────────────────────────────────────
 // .env Builder
 // ─────────────────────────────────────────────────────────
@@ -206,6 +247,29 @@ AI_TOP_P=${response.aiTopP}`;
   return [platformBlock, aiBlock, '# Server\nPORT=3000'].join('\n\n');
 }
 
+/**
+ * Builds the Telegram notifications block for config.yml if the user opted in.
+ * Returns an empty string if Telegram was skipped.
+ */
+function buildTelegramConfigBlock(response: Record<string, any>): string {
+  if (!response.enableTelegram) return '';
+
+  const categories = (response.telegramCategories as string)
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => `      - ${c}`)
+    .join('\n');
+
+  return `
+notifications:
+  telegram:
+    bot_token: "${response.telegramBotToken}"
+    chat_id: "${response.telegramChatId}"
+    trigger_categories:
+${categories}`;
+}
+
 // ─────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────
@@ -219,6 +283,7 @@ async function main() {
     ...GITLAB_QUESTIONS,
     ...GITHUB_QUESTIONS,
     ...AI_QUESTIONS,
+    ...TELEGRAM_QUESTIONS,
   ]);
 
   if (!response.platform) {
@@ -226,12 +291,20 @@ async function main() {
     process.exit(1);
   }
 
-  // Write server config files
+  // Write .env
   writeFileSync(resolve(process.cwd(), '.env'), buildEnvContent(response));
-  writeFileSync(
-    resolve(process.cwd(), 'config.yml'),
-    SERVER_CONFIG_TEMPLATE.replace('{{responseLanguage}}', response.responseLanguage),
+
+  // Write config.yml with optional Telegram block appended
+  const telegramBlock = buildTelegramConfigBlock(response);
+  const configContent = SERVER_CONFIG_TEMPLATE.replace(
+    '{{responseLanguage}}',
+    response.responseLanguage,
+  ).replace(
+    '# Telegram Notifications (Optional)\n# Uncomment and fill in to enable Telegram alerts for specific issue categories.\n# notifications:\n#   telegram:\n#     bot_token: "YOUR_BOT_TOKEN"\n#     chat_id: "YOUR_CHAT_ID"\n#     trigger_categories:\n#       - security\n#       - critical',
+    telegramBlock ||
+      '# Telegram Notifications (Optional)\n# Uncomment and fill in to enable Telegram alerts for specific issue categories.\n# notifications:\n#   telegram:\n#     bot_token: "YOUR_BOT_TOKEN"\n#     chat_id: "YOUR_CHAT_ID"\n#     trigger_categories:\n#       - security\n#       - critical',
   );
+  writeFileSync(resolve(process.cwd(), 'config.yml'), configContent);
 
   // Write per-repo config template into .yolo/config.yml
   const yoloDir = resolve(process.cwd(), '.yolo');
@@ -245,6 +318,9 @@ async function main() {
   console.info(
     '   - .yolo/config.yml  (per-repo branch filters — commit this to your target repos)',
   );
+  if (response.enableTelegram) {
+    console.info('   📨 Telegram notifications configured in config.yml');
+  }
   console.info("\n🚀 Run 'bun dev' or 'bun start' to start the server.");
 }
 

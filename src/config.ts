@@ -4,6 +4,11 @@ import { load } from 'js-yaml';
 import { z } from 'zod';
 import type { AppConfig } from '@/types';
 
+const IS_CI =
+  process.env.GITHUB_ACTIONS === 'true' ||
+  process.env.GITLAB_CI === 'true' ||
+  process.env.YOLO_CI === 'true';
+
 const CONFIG_PATH = resolve(process.cwd(), 'config.yml');
 
 let _config: AppConfig | null = null;
@@ -48,6 +53,17 @@ const ConfigSchema = z.object({
     summaryComment: z.boolean(),
   }),
   instructions: z.array(z.string()),
+  notifications: z
+    .object({
+      telegram: z
+        .object({
+          bot_token: z.string().min(1),
+          chat_id: z.string().min(1),
+          trigger_categories: z.array(z.string()).min(1),
+        })
+        .optional(),
+    })
+    .optional(),
   output: z.object({
     format: z.string(),
     schema: z.record(z.string(), z.any()),
@@ -102,15 +118,65 @@ async function initConfig(): Promise<AppConfig> {
   } catch (err: any) {
     const message = err instanceof Error ? err.message : String(err);
     if (err?.code === 'ENOENT') {
+      // In CI mode, config.yml is not expected — build a default config from env vars
+      if (IS_CI) {
+        console.info(
+          '[Yolo] ℹ️ CI mode detected — no config.yml found, using defaults from environment.',
+        );
+        return buildCiConfig();
+      }
       console.error('\n\x1b[31m❌ config.yml file not found!\x1b[0m');
       console.error(
-        '\x1b[33m💡 Solution: Run the command "bun run src/cli/index.ts" to create the initial configuration automatically.\x1b[0m\n',
+        '\x1b[33m💡 Solution: Run the command "npx yolo-ai-reviewer init" to create the initial configuration automatically.\x1b[0m\n',
       );
     } else {
       console.error(`\n\x1b[31m❌ Failed to load configuration: ${message}\x1b[0m\n`);
     }
     process.exit(1);
   }
+}
+
+/**
+ * Builds a minimal AppConfig from environment variables for CI/CD mode.
+ * Telegram is optional — only included if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set.
+ */
+function buildCiConfig(): AppConfig {
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
+  const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+  const telegramCategories = process.env.TELEGRAM_TRIGGER_CATEGORIES?.split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  const hasTelegram = !!(telegramBotToken && telegramChatId && telegramCategories?.length);
+
+  return {
+    behavior: {
+      avoid_nitpick: true,
+      confidence_threshold: 0.7,
+      diff_only: true,
+      no_hallucination: true,
+      no_repeat_issue: true,
+    },
+    features: { autoResolve: false, summaryComment: true },
+    instructions: [
+      'Only review changed code',
+      'Do not repeat issues already commented',
+      'Do not force finding issues',
+      'If no issues found, return empty array',
+    ],
+    notifications: hasTelegram
+      ? {
+          telegram: {
+            bot_token: telegramBotToken!,
+            chat_id: telegramChatId!,
+            trigger_categories: telegramCategories!,
+          },
+        }
+      : undefined,
+    output: { format: 'json', schema: {} },
+    responseLanguage: process.env.YOLO_RESPONSE_LANGUAGE || 'English',
+    skillsPath: '.skills',
+  };
 }
 
 _config = await initConfig();

@@ -78,6 +78,7 @@ export interface ParsedDiff {
 
 export interface ReviewComment {
   line: number;
+  category: string;
   issue: string;
   suggestion: string;
   replacementCode?: string;
@@ -111,4 +112,12 @@ export interface AppConfig {
     schema: any;
   };
   instructions: string[];
+  notifications?: {
+    telegram?: {
+      bot_token: string;
+      chat_id: string;
+      /** Categories that trigger a Telegram notification (e.g. ["security", "critical"]) */
+      trigger_categories: string[];
+    };
+  };
 }
