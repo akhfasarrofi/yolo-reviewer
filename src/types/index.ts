@@ -1,5 +1,46 @@
 export * from '../platforms/types.ts';
 
+export interface StandardReviewPayload {
+  projectId: string | number;
+  mrIid: string | number;
+  repoName: string;
+  repoUrl: string;
+  mrUrl: string;
+  base_sha: string;
+  head_sha: string;
+  start_sha: string;
+  /** The branch this PR/MR is targeting (e.g. "main", "develop") */
+  target_branch: string;
+}
+
+/** Per-repository configuration loaded from `.yolo/config.yml` inside the target repo. */
+export interface RepoConfig {
+  filters?: {
+    /** If set, Yolo will only review PRs/MRs targeting these branches. */
+    target_branches?: string[];
+  };
+}
+
+export interface GitHubPRWebhook {
+  action: string;
+  number: number;
+  pull_request: {
+    number: number;
+    state: string;
+    head: {
+      sha: string;
+    };
+    base: {
+      sha: string;
+      ref: string;
+    };
+  };
+  repository: {
+    full_name: string; // owner/repo
+    html_url: string;
+  };
+}
+
 export interface GitLabMRWebhook {
   object_kind: 'merge_request';
   project: {
@@ -21,6 +62,7 @@ export interface GitLabMRWebhook {
       head_sha: string;
       start_sha: string;
     };
+    target_branch: string;
   };
 }
 

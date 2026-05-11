@@ -8,16 +8,32 @@ const CONFIG_PATH = resolve(process.cwd(), 'config.yml');
 
 let _config: AppConfig | null = null;
 
-const EnvSchema = z.object({
-  AI_API_KEY: z.string().min(1, 'AI_API_KEY cannot be empty'),
-  AI_BASE_URL: z.url('AI_BASE_URL must be a valid URL'),
-  AI_MODEL: z.string().min(1, 'AI_MODEL cannot be empty').default('gemini-3-flash'),
-  AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
-  AI_TOP_P: z.coerce.number().min(0).max(1).default(1.0),
-  GITLAB_TOKEN: z.string().min(1, 'GITLAB_TOKEN cannot be empty'),
-  GITLAB_URL: z.url('GITLAB_URL must be a valid URL'),
-  PORT: z.coerce.number().default(3000),
-});
+const EnvSchema = z
+  .object({
+    AI_API_KEY: z.string().min(1, 'AI_API_KEY cannot be empty'),
+    AI_BASE_URL: z.url('AI_BASE_URL must be a valid URL'),
+    AI_MODEL: z.string().min(1, 'AI_MODEL cannot be empty').default('gemini-3-flash'),
+    AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
+    AI_TOP_P: z.coerce.number().min(0).max(1).default(1.0),
+    GITHUB_API_URL: z.string().url().optional(),
+    GITHUB_TOKEN: z.string().optional(),
+    GITLAB_TOKEN: z.string().optional(),
+    GITLAB_URL: z.string().url().optional(),
+    PORT: z.coerce.number().default(3000),
+  })
+  .superRefine((data, ctx) => {
+    const hasGitLab = !!(data.GITLAB_TOKEN && data.GITLAB_URL);
+    const hasGitHub = !!data.GITHUB_TOKEN;
+
+    if (!hasGitLab && !hasGitHub) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'You must provide either GitLab (GITLAB_TOKEN & GITLAB_URL) or GitHub (GITHUB_TOKEN) credentials.',
+        path: ['platform'],
+      });
+    }
+  });
 
 const ConfigSchema = z.object({
   behavior: z.object({

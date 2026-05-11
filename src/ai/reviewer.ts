@@ -1,4 +1,4 @@
-import { callAI } from '@/ai/gemini.ts';
+import { callAI } from '@/ai/chat';
 import { getConfig } from '@/config.ts';
 import type { PlatformProvider, ReviewComment } from '@/types';
 
