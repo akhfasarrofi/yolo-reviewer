@@ -1,14 +1,27 @@
 {
-  "name": "ai-reviewer",
+  "name": "yolo-ai-reviewer",
+  "version": "1.0.0",
+  "description": "Automated AI code review for GitLab & GitHub — multi-platform, zero infrastructure required.",
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
-  "bin": {
-    "yolo": "./src/cli/index.ts"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akhfasarrofi/yolo-reviewer"
   },
+  "bin": {
+    "yolo": "./dist/cli/index.js",
+    "yolo-run": "./dist/cli/run.js"
+  },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
+    "run:ci": "bun run src/cli/run.ts",
+    "build": "bun build src/cli/index.ts src/cli/run.ts --outdir dist/cli --target node --format esm && bun build src/index.ts --outdir dist --target node --format esm",
+    "prepublishOnly": "bun run build",
     "typecheck": "tsc --noEmit",
     "format": "biome check --write",
     "prepare": "husky",

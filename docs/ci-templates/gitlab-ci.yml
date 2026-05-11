@@ -1,0 +1,21 @@
+yolo-review:
+  stage: review
+  image: oven/bun:alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - npx yolo run
+  variables:
+    # Platform credentials — store these in GitLab CI/CD Variables
+    GITLAB_TOKEN: $GITLAB_TOKEN
+    GITLAB_URL: $GITLAB_URL          # e.g. https://gitlab.com or your self-hosted URL
+
+    # AI Provider — store these in GitLab CI/CD Variables
+    AI_BASE_URL: $AI_BASE_URL
+    AI_API_KEY: $AI_API_KEY
+    AI_MODEL: $AI_MODEL
+
+    # Optional: Telegram notifications
+    # TELEGRAM_BOT_TOKEN: $TELEGRAM_BOT_TOKEN
+    # TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
+    # TELEGRAM_TRIGGER_CATEGORIES: "security,critical"

@@ -1,0 +1,23 @@
+# Compiled output
+dist/
+node_modules/
+
+# Development configs
+.env
+.env.*
+config.yml
+
+# Local test data
+.skills/
+.yolo/
+
+# Dev tooling
+.husky/
+.biome*
+biome.json
+commitlint.config.*
+
+# CI / editor
+.github/
+.vscode/
+*.log
