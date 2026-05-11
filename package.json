@@ -22,6 +22,7 @@
     "run:ci": "bun run src/cli/run.ts",
     "build": "bun build src/cli/index.ts src/cli/run.ts --outdir dist/cli --target node --format esm && bun build src/index.ts --outdir dist --target node --format esm",
     "prepublishOnly": "bun run build",
+    "release": "bun scripts/release.ts",
     "typecheck": "tsc --noEmit",
     "format": "biome check --write",
     "prepare": "husky",
