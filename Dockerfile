@@ -27,16 +27,15 @@ FROM oven/bun:1.3-alpine AS runner
 WORKDIR /app
 
 # Non-root user untuk keamanan
-RUN addgroup -S gatot && adduser -S gatot -G gatot
+RUN addgroup -S yolo && adduser -S yolo -G yolo
 
 # Copy dari builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/skills ./skills
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
-USER gatot
+USER yolo
 
 # Expose port
 EXPOSE 3000
