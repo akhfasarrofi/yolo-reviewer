@@ -1,3 +1,4 @@
+import { App } from 'octokit';
 import type {
   DiffFile,
   DiffRefs,
@@ -8,17 +9,70 @@ import type {
 
 export class GitHubProvider implements PlatformProvider {
   private url: string;
-  private token: string;
+  private fallbackToken?: string;
+  private app?: App;
+
+  // Cache installation tokens to avoid fetching every time
+  private tokenCache: Map<string, string> = new Map();
 
   constructor() {
     this.url = process.env.GITHUB_API_URL || 'https://api.github.com';
-    this.token = process.env.GITHUB_TOKEN!;
+
+    if (process.env.GITHUB_APP_ID && process.env.GITHUB_PRIVATE_KEY) {
+      this.app = new App({
+        appId: process.env.GITHUB_APP_ID,
+        privateKey: process.env.GITHUB_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      });
+    } else {
+      this.fallbackToken = process.env.GITHUB_TOKEN;
+      if (!this.fallbackToken) {
+        console.warn('[Yolo] ⚠️ No GITHUB_TOKEN or GitHub App credentials provided!');
+      }
+    }
   }
 
-  private headers(customAccept?: string) {
+  private async getToken(projectId: string | number): Promise<string> {
+    if (this.app && typeof projectId === 'string') {
+      const cacheKey = String(projectId);
+      if (this.tokenCache.has(cacheKey)) {
+        return this.tokenCache.get(cacheKey)!;
+      }
+
+      try {
+        const [owner, repo] = projectId.split('/');
+
+        if (!owner || !repo)
+          throw new Error('Invalid GitHub projectId format, expected owner/repo');
+
+        // Fetch installation ID dynamically for this repo
+        const { data } = await this.app.octokit.request('GET /repos/{owner}/{repo}/installation', {
+          owner,
+          repo,
+        });
+
+        // Get an authenticated octokit instance for this installation
+        const installationOctokit = await this.app.getInstallationOctokit(data.id);
+
+        // Extract the token using the internal auth interface
+        const auth = (await installationOctokit.auth({ type: 'installation' })) as {
+          token: string;
+        };
+
+        this.tokenCache.set(cacheKey, auth.token);
+        return auth.token;
+      } catch (err) {
+        console.error(`[Yolo] ❌ Failed to generate GitHub App token for ${projectId}:`, err);
+        throw err;
+      }
+    }
+    return this.fallbackToken || '';
+  }
+
+  private async headers(projectId: string | number, customAccept?: string) {
+    const token = await this.getToken(projectId);
     return {
       Accept: customAccept || 'application/vnd.github.v3+json',
-      Authorization: `Bearer ${this.token}`,
+      Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': '2022-11-28',
     };
   }
@@ -36,7 +90,7 @@ export class GitHubProvider implements PlatformProvider {
   ): Promise<{ diffs: DiffFile[]; diff_refs?: DiffRefs }> {
     // 1. Get PR metadata to extract SHAs (base_sha, head_sha)
     const prUrl = `${this.baseUrl(projectId)}/pulls/${mrIid}`;
-    const prRes = await fetch(prUrl, { headers: this.headers() });
+    const prRes = await fetch(prUrl, { headers: await this.headers(projectId) });
     if (!prRes.ok) {
       throw new Error(`[GitHub] getMRDiffs (PR info) failed: ${prRes.status}`);
     }
@@ -50,7 +104,7 @@ export class GitHubProvider implements PlatformProvider {
 
     // 2. Get PR files with patches
     const filesUrl = `${this.baseUrl(projectId)}/pulls/${mrIid}/files?per_page=100`;
-    const filesRes = await fetch(filesUrl, { headers: this.headers() });
+    const filesRes = await fetch(filesUrl, { headers: await this.headers(projectId) });
     if (!filesRes.ok) {
       throw new Error(`[GitHub] getMRDiffs (files) failed: ${filesRes.status}`);
     }
@@ -75,7 +129,7 @@ export class GitHubProvider implements PlatformProvider {
   ): Promise<string> {
     const encodedPath = encodeURIComponent(filePath);
     const url = `${this.baseUrl(projectId)}/contents/${encodedPath}?ref=${ref}`;
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, { headers: await this.headers(projectId) });
 
     if (!res.ok) {
       throw new Error(`[GitHub] getFileContent failed for ${filePath}@${ref}: ${res.status}`);
@@ -96,7 +150,7 @@ export class GitHubProvider implements PlatformProvider {
   ): Promise<Discussion[]> {
     // GitHub handles PR review comments (line-specific) via this endpoint
     const url = `${this.baseUrl(projectId)}/pulls/${mrIid}/comments?per_page=100`;
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, { headers: await this.headers(projectId) });
 
     if (!res.ok) {
       throw new Error(`[GitHub] getMRDiscussions failed: ${res.status}`);
@@ -139,7 +193,7 @@ export class GitHubProvider implements PlatformProvider {
 
     const res = await fetch(url, {
       body: JSON.stringify(githubPayload),
-      headers: this.headers(),
+      headers: await this.headers(projectId),
       method: 'POST',
     });
 
@@ -162,7 +216,7 @@ export class GitHubProvider implements PlatformProvider {
     // We use /contents/ API which returns directory listing
     const encodedPath = encodeURIComponent(skillsFolderPath);
     const url = `${this.baseUrl(projectId)}/contents/${encodedPath}?ref=${ref}`;
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, { headers: await this.headers(projectId) });
 
     if (res.status === 404) {
       return [];
@@ -185,7 +239,7 @@ export class GitHubProvider implements PlatformProvider {
   }
 
   public async resolveDiscussion(
-    _projectId: number | string,
+    projectId: number | string,
     _mrIid: number | string,
     discussionId: string, // this is the GraphQL node_id
     resolved: boolean = true,
@@ -212,7 +266,7 @@ export class GitHubProvider implements PlatformProvider {
         query,
         variables: { threadId: discussionId },
       }),
-      headers: this.headers(),
+      headers: await this.headers(projectId),
       method: 'POST',
     });
 
@@ -229,7 +283,7 @@ export class GitHubProvider implements PlatformProvider {
     const url = `${this.baseUrl(projectId)}/issues/${mrIid}/comments`;
     const res = await fetch(url, {
       body: JSON.stringify({ body }),
-      headers: this.headers(),
+      headers: await this.headers(projectId),
       method: 'POST',
     });
 

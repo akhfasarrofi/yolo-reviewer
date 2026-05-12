@@ -20,21 +20,25 @@ const EnvSchema = z
     AI_MODEL: z.string().min(1, 'AI_MODEL cannot be empty').default('gemini-3-flash'),
     AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
     AI_TOP_P: z.coerce.number().min(0).max(1).default(1.0),
-    GITHUB_API_URL: z.string().url().optional(),
+    GITHUB_API_URL: z.url().optional(),
+    GITHUB_APP_ID: z.string().optional(),
+    GITHUB_PRIVATE_KEY: z.string().optional(),
     GITHUB_TOKEN: z.string().optional(),
     GITLAB_TOKEN: z.string().optional(),
-    GITLAB_URL: z.string().url().optional(),
+    GITLAB_URL: z.url().optional(),
     PORT: z.coerce.number().default(3000),
   })
   .superRefine((data, ctx) => {
     const hasGitLab = !!(data.GITLAB_TOKEN && data.GITLAB_URL);
-    const hasGitHub = !!data.GITHUB_TOKEN;
+    const hasGitHubPAT = !!data.GITHUB_TOKEN;
+    const hasGitHubApp = !!(data.GITHUB_APP_ID && data.GITHUB_PRIVATE_KEY);
+    const hasGitHub = hasGitHubPAT || hasGitHubApp;
 
     if (!hasGitLab && !hasGitHub) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message:
-          'You must provide either GitLab (GITLAB_TOKEN & GITLAB_URL) or GitHub (GITHUB_TOKEN) credentials.',
+          'You must provide either GitLab credentials, a GitHub PAT (GITHUB_TOKEN), or GitHub App credentials (APP_ID, PRIVATE_KEY).',
         path: ['platform'],
       });
     }

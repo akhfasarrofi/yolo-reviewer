@@ -98,6 +98,48 @@ Follow the prompts:
 
 ---
 
+### Step 1.5 — Setup Bot Account (Optional but Recommended)
+
+By default, if you use your Personal Access Token (PAT) for the server, Yolo's comments will appear as if they were posted by **you**. To make comments appear professionally as a bot:
+
+#### 🐙 For GitHub
+
+**Option 1: GitHub App (⭐️ Best Practice)**
+Using a GitHub App is the most secure and professional way. The comments will appear with the official `[bot]` badge (e.g., `yolo-reviewer[bot]`). It also scales automatically across all repos without needing a separate user account.
+
+1. Go to your GitHub account/organization → **Settings** → **Developer settings** → **GitHub Apps** → **New GitHub App**.
+2. Set the **GitHub App name** (e.g., `Yolo Reviewer`) and **Homepage URL** (e.g., your website).
+3. Uncheck **Active** under the Webhook section (since we configure webhooks manually per-repo in this guide).
+4. Under **Repository permissions**, set **Pull requests** to **Read and write**.
+5. Click **Create GitHub App**.
+6. On the next page, copy your **App ID** (at the top).
+7. Scroll down to **Private keys** and click **Generate a private key**. A `.pem` file will be downloaded.
+8. On the left sidebar, click **Install App** and install it on your selected repositories or the entire organization.
+9. Instead of using `GITHUB_TOKEN` in your server's `.env`, provide these two variables:
+   ```env
+   GITHUB_APP_ID="your_app_id"
+   GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...your key...\n-----END RSA PRIVATE KEY-----\n"
+   ```
+   *(Note: For the private key, replace actual line breaks with `\n` to fit on one line in the `.env` file).*
+
+> 💡 **Troubleshooting Private Key Errors:**  
+> If Yolo fails to start or throws a private key parsing error (e.g., in strict Docker environments), you might need to convert your `.pem` file to `pkcs8` format. Run this command in your terminal:  
+> `openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in downloaded_key.pem -out pkcs8_key.pem`  
+> Then copy the contents of `pkcs8_key.pem` into your `.env`.
+
+**Option 2: Personal Access Token (Bot Account)**
+- Create a brand new GitHub account (e.g., `your-company-yolo-bot`).
+- Invite this account to your repositories with *Write* access.
+- Generate a PAT from this new account and put it in `.env` as `GITHUB_TOKEN`.
+- *Note: In CI/CD Mode (GitHub Actions), you don't need any of this. The default `GITHUB_TOKEN` provided by the pipeline automatically posts as `github-actions[bot]`.*
+
+#### 🦊 For GitLab
+
+- **Group Access Token / Project Access Token (Recommended):** Go to Settings → Access Tokens at the Group or Project level. Create a token with `api` scope and name it `Yolo Reviewer`. GitLab automatically creates a background bot user with this name! Just put this token in `.env` as `GITLAB_TOKEN`.
+- **Service Account:** Alternatively, ask your admin to create a dedicated Service Account.
+
+---
+
 <details>
 <summary><strong>🖥️ Mode A: Server (Webhook)</strong></summary>
 
