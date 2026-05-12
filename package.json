@@ -1,6 +1,6 @@
 {
   "name": "yolo-reviewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automated AI code review for GitLab & GitHub — multi-platform, zero infrastructure required.",
   "module": "src/index.ts",
   "type": "module",
