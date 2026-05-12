@@ -5,27 +5,28 @@ import type { PlatformProvider, ReviewComment } from '@/types';
 const skillsCache = new Map<string, string>();
 
 /**
- * Loads markdown skill rule files from the target repository's configured skills directory (.skills/{language}/*.md).
- * Caches the combined rules based on the project ID and commit SHA to prevent redundant API calls.
+ * Loads markdown skill rule files from the TARGET branch of the repository.
+ * Using the target branch (e.g. main) ensures that .skills/ conventions are always
+ * applied from the established base, even when the source branch doesn't have them.
  *
  * @param provider - The Git platform provider interface used to interact with the repository.
  * @param projectId - The unique identifier of the target repository/project.
- * @param headSha - The commit SHA used to fetch the correct version of the skill files.
+ * @param targetBranch - The target branch name (e.g. "main") used to fetch skill files.
  * @returns A single concatenated string containing all parsed markdown skill rules.
  */
 async function loadSkillRules(
   provider: PlatformProvider,
   projectId: number | string,
-  headSha: string,
+  targetBranch: string,
 ): Promise<string> {
-  const cacheKey = `${projectId}:${headSha}:skills`;
+  const cacheKey = `${projectId}:${targetBranch}:skills`;
   const cached = skillsCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
   const { skillsPath } = getConfig(); // e.g. ".skills"
 
-  // Fetch list of .md files langsung from .skills/
-  const filePaths = await provider.getSkillFiles(projectId, skillsPath, headSha);
+  // Fetch list of .md files from TARGET branch — not from head_sha
+  const filePaths = await provider.getSkillFiles(projectId, skillsPath, targetBranch);
 
   if (filePaths.length === 0) {
     skillsCache.set(cacheKey, '');
@@ -35,7 +36,7 @@ async function loadSkillRules(
   const contents = await Promise.all(
     filePaths.map(async (filePath) => {
       try {
-        const content = await provider.getFileContent(projectId, filePath, headSha);
+        const content = await provider.getFileContent(projectId, filePath, targetBranch);
         const skillName = filePath.split('/').pop()?.replace('.md', '') ?? filePath;
         return `### ${skillName.toUpperCase()}\n${content}`;
       } catch (err) {
@@ -94,7 +95,7 @@ function buildSystemInstruction(skillRules: string): string {
  * @param fileContent - The extracted contextual diff block containing numbered lines.
  * @param filePath - The full path of the file being reviewed.
  * @param projectId - The unique identifier of the repository.
- * @param headSha - The commit SHA of the current merge request head.
+ * @param targetBranch - The target branch name (e.g. "main") used to fetch .skills/ rules.
  * @returns An array of parsed ReviewComment objects, or an empty array if no issues are found or an error occurs.
  */
 export async function reviewFile(
@@ -102,9 +103,9 @@ export async function reviewFile(
   fileContent: string,
   filePath: string,
   projectId: number | string,
-  headSha: string,
+  targetBranch: string,
 ): Promise<ReviewComment[]> {
-  const skillRules = await loadSkillRules(provider, projectId, headSha);
+  const skillRules = await loadSkillRules(provider, projectId, targetBranch);
   const systemInstruction = buildSystemInstruction(skillRules);
 
   const userContent = `File: ${filePath}

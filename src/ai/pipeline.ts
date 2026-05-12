@@ -124,7 +124,7 @@ export async function runReviewPipeline(
     console.info(
       `[Yolo] 🧠 Sending diff of '${filePath}' to AI for analysis... (${parsedDiff.changedLines.size} changed lines)`,
     );
-    const comments = await reviewFile(provider, diffContext, filePath, projectId, head_sha);
+    const comments = await reviewFile(provider, diffContext, filePath, projectId, target_branch);
 
     if (comments.length === 0) {
       processedFiles++;

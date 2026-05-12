@@ -23,14 +23,14 @@ import prompts from 'prompts';
 // Helpers
 // ─────────────────────────────────────────────────────────
 
-const PKG_PATH = resolve(import.meta.dir, '../package.json');
+const PKG_PATH = resolve(import.meta.dirname, '../package.json');
 
 function readPkg(): Record<string, any> {
   return JSON.parse(readFileSync(PKG_PATH, 'utf-8'));
 }
 
 function writePkg(pkg: Record<string, any>): void {
-  writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n');
+  writeFileSync(PKG_PATH, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 function bumpVersion(current: string, type: 'patch' | 'minor' | 'major'): string {
