@@ -57,7 +57,7 @@ sequenceDiagram
 
 ## Requirements
 
-- [Bun](https://bun.sh) v1.0+ *(for server/docker mode)*
+- [Bun](https://bun.sh) v1.0+ _(for server/docker mode)_
 - GitLab or GitHub account
 - An OpenAI-compatible AI endpoint (`/v1/chat/completions`)
 
@@ -67,11 +67,11 @@ sequenceDiagram
 
 Yolo can run in three different ways. Pick the one that fits your team:
 
-| Mode | Infrastructure | Best For |
-|---|---|---|
-| **Server (Webhook)** | Your own server / VPS | Teams with multiple repos |
-| **Docker** | Docker on any server | Easy self-hosting |
-| **CI/CD** | No server, runs in pipeline | Single repo or testing |
+| Mode                 | Infrastructure              | Best For                  |
+| -------------------- | --------------------------- | ------------------------- |
+| **Server (Webhook)** | Your own server / VPS       | Teams with multiple repos |
+| **Docker**           | Docker on any server        | Easy self-hosting         |
+| **CI/CD**            | No server, runs in pipeline | Single repo or testing    |
 
 ---
 
@@ -82,16 +82,18 @@ Yolo can run in three different ways. Pick the one that fits your team:
 Run the interactive CLI to generate all configuration files:
 
 ```bash
-npx yolo-ai-reviewer init
+npx yolo-reviewer init
 ```
 
 Follow the prompts:
+
 1. Select platform: **GitLab** or **GitHub**
 2. Enter credentials (token, URL, webhook secret)
 3. Select AI provider and enter API key
 4. Set AI model, temperature, language
 
 **Generated files:**
+
 - `.env` — credentials for your server
 - `config.yml` — server-level AI behavior
 - `.yolo/config.yml` — per-repo template (commit this to each target repo)
@@ -120,7 +122,7 @@ Using a GitHub App is the most secure and professional way. The comments will ap
    GITHUB_APP_ID="your_app_id"
    GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...your key...\n-----END RSA PRIVATE KEY-----\n"
    ```
-   *(Note: For the private key, replace actual line breaks with `\n` to fit on one line in the `.env` file).*
+   _(Note: For the private key, replace actual line breaks with `\n` to fit on one line in the `.env` file)._
 
 > 💡 **Troubleshooting Private Key Errors:**  
 > If Yolo fails to start or throws a private key parsing error (e.g., in strict Docker environments), you might need to convert your `.pem` file to `pkcs8` format. Run this command in your terminal:  
@@ -128,10 +130,11 @@ Using a GitHub App is the most secure and professional way. The comments will ap
 > Then copy the contents of `pkcs8_key.pem` into your `.env`.
 
 **Option 2: Personal Access Token (Bot Account)**
+
 - Create a brand new GitHub account (e.g., `your-company-yolo-bot`).
-- Invite this account to your repositories with *Write* access.
+- Invite this account to your repositories with _Write_ access.
 - Generate a PAT from this new account and put it in `.env` as `GITHUB_TOKEN`.
-- *Note: In CI/CD Mode (GitHub Actions), you don't need any of this. The default `GITHUB_TOKEN` provided by the pipeline automatically posts as `github-actions[bot]`.*
+- _Note: In CI/CD Mode (GitHub Actions), you don't need any of this. The default `GITHUB_TOKEN` provided by the pipeline automatically posts as `github-actions[bot]`._
 
 #### 🦊 For GitLab
 
@@ -194,11 +197,11 @@ For production, deploy to a VPS and point your domain to port 3000.
 
 ```bash
 # Clone this repo
-git clone https://github.com/your-org/yolo-ai-reviewer
-cd yolo-ai-reviewer
+git https://github.com/akhfasarrofi/yolo-reviewer
+cd yolo-reviewer
 
 # Run the setup wizard
-npx yolo-ai-reviewer init
+npx yolo-reviewer init
 
 # Build and start
 docker compose up -d --build
@@ -220,7 +223,7 @@ Then follow **Step 4A** to register webhooks.
 
 In CI/CD mode, the Yolo engine **runs directly inside your CI pipeline runner** — no server to deploy or maintain.
 
-When a developer opens a PR/MR, the CI pipeline starts, downloads `yolo-ai-reviewer` via `npx`, reads credentials from repository secrets, runs the AI review, and posts comments — then exits.
+When a developer opens a PR/MR, the CI pipeline starts, downloads `yolo-reviewer` via `npx`, reads credentials from repository secrets, runs the AI review, and posts comments — then exits.
 
 ### Step 2C — GitHub Actions
 
@@ -228,11 +231,11 @@ When a developer opens a PR/MR, the CI pipeline starts, downloads `yolo-ai-revie
 
 Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**:
 
-| Secret | Value |
-|---|---|
+| Secret        | Value                         |
+| ------------- | ----------------------------- |
 | `AI_BASE_URL` | e.g. `https://api.openai.com` |
-| `AI_API_KEY` | your AI API key |
-| `AI_MODEL` | e.g. `gpt-4o-mini` |
+| `AI_API_KEY`  | your AI API key               |
+| `AI_MODEL`    | e.g. `gpt-4o-mini`            |
 
 > `GITHUB_TOKEN` is provided automatically by GitHub Actions — no manual setup needed.
 
@@ -279,13 +282,13 @@ jobs:
 
 Go to your project → **Settings** → **CI/CD** → **Variables**:
 
-| Variable | Value |
-|---|---|
+| Variable       | Value                                           |
+| -------------- | ----------------------------------------------- |
 | `GITLAB_TOKEN` | a GitLab Personal Access Token with `api` scope |
-| `GITLAB_URL` | `https://gitlab.com` or your self-hosted URL |
-| `AI_BASE_URL` | your AI provider URL |
-| `AI_API_KEY` | your AI API key |
-| `AI_MODEL` | e.g. `gpt-4o-mini` |
+| `GITLAB_URL`   | `https://gitlab.com` or your self-hosted URL    |
+| `AI_BASE_URL`  | your AI provider URL                            |
+| `AI_API_KEY`   | your AI API key                                 |
+| `AI_MODEL`     | e.g. `gpt-4o-mini`                              |
 
 **b) Add to your `.gitlab-ci.yml`:**
 
@@ -376,8 +379,8 @@ notifications:
     bot_token: "YOUR_BOT_TOKEN"
     chat_id: "YOUR_CHAT_ID"
     trigger_categories:
-      - security   # alert when AI flags a security violation
-      - critical   # alert for anything in .skills/critical.md
+      - security # alert when AI flags a security violation
+      - critical # alert for anything in .skills/critical.md
 ```
 
 ### How the AI knows the category
@@ -390,20 +393,20 @@ The AI assigns a `category` to each comment based on which `.skills/` rule was v
 
 ```yaml
 skillsPath: ".skills"
-responseLanguage: "English"   # or "Indonesian"
+responseLanguage: "English" # or "Indonesian"
 
 features:
-  autoResolve: true           # auto-resolve old comments when the issue is fixed
-  summaryComment: true        # post a summary at the end of each review
+  autoResolve: true # auto-resolve old comments when the issue is fixed
+  summaryComment: true # post a summary at the end of each review
 
 behavior:
-  diff_only: true             # only review changed lines
-  no_hallucination: true      # instruct AI not to invent issues
-  no_repeat_issue: true       # skip issues already commented
-  avoid_nitpick: true         # skip stylistic nitpicks
-  confidence_threshold: 0.7  # minimum AI confidence to post a comment
+  diff_only: true # only review changed lines
+  no_hallucination: true # instruct AI not to invent issues
+  no_repeat_issue: true # skip issues already commented
+  avoid_nitpick: true # skip stylistic nitpicks
+  confidence_threshold: 0.7 # minimum AI confidence to post a comment
 
-notifications:                # optional
+notifications: # optional
   telegram:
     bot_token: "..."
     chat_id: "..."

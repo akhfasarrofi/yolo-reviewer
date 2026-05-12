@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Interactive release script for yolo-ai-reviewer.
+ * Interactive release script for yolo-reviewer.
  *
  * Usage: bun scripts/release.ts
  *

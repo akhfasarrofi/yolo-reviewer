@@ -131,7 +131,7 @@ async function initConfig(): Promise<AppConfig> {
       }
       console.error('\n\x1b[31m❌ config.yml file not found!\x1b[0m');
       console.error(
-        '\x1b[33m💡 Solution: Run the command "npx yolo-ai-reviewer init" to create the initial configuration automatically.\x1b[0m\n',
+        '\x1b[33m💡 Solution: Run the command "npx yolo-reviewer init" to create the initial configuration automatically.\x1b[0m\n',
       );
     } else {
       console.error(`\n\x1b[31m❌ Failed to load configuration: ${message}\x1b[0m\n`);

@@ -1,6 +1,6 @@
 services:
   yolo:
-    image: yolo-ai-reviewer:latest
+    image: yolo-reviewer:latest
     build: .
     container_name: yolo-reviewer
     ports:
