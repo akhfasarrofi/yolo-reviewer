@@ -16,7 +16,6 @@ RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY src/ ./src/
-COPY skills/ ./skills/
 COPY tsconfig.json ./
 
 # ============================================================
