@@ -132,7 +132,10 @@ export class GitHubProvider implements PlatformProvider {
     const res = await fetch(url, { headers: await this.headers(projectId) });
 
     if (!res.ok) {
-      throw new Error(`[GitHub] getFileContent failed for ${filePath}@${ref}: ${res.status}`);
+      const errBody = await res.text();
+      throw new Error(
+        `[GitHub] getFileContent failed for ${filePath}@${ref}: ${res.status} - ${errBody}`,
+      );
     }
 
     const data = (await res.json()) as any;
@@ -290,5 +293,17 @@ export class GitHubProvider implements PlatformProvider {
     if (!res.ok) {
       console.error(`[GitHub] Failed to post MR note: ${res.status}`);
     }
+  }
+
+  public async getLatestCommitShaForPath(
+    projectId: number | string,
+    path: string,
+    branch: string,
+  ): Promise<string | null> {
+    const url = `${this.baseUrl(projectId)}/commits?sha=${branch}&path=${encodeURIComponent(path)}&per_page=1`;
+    const res = await fetch(url, { headers: await this.headers(projectId) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as any[];
+    return data[0]?.sha ?? null;
   }
 }

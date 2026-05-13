@@ -24,13 +24,17 @@ export async function handlePullRequestEvent(
   provider: PlatformProvider,
 ): Promise<{ processed: number; posted: number }> {
   const standardPayload: StandardReviewPayload = {
+    assignees: payload.pull_request.assignees?.map((a) => a.login) ?? [],
     base_sha: payload.pull_request.base.sha,
     head_sha: payload.pull_request.head.sha,
     mrIid: payload.number,
     mrUrl: `${payload.repository.html_url}/pull/${payload.number}`,
+    projectHomepage: payload.repository.homepage || payload.repository.html_url,
     projectId: payload.repository.full_name,
+    projectName: payload.repository.name,
     repoName: payload.repository.full_name,
     repoUrl: payload.repository.html_url,
+    reviewers: payload.pull_request.requested_reviewers?.map((r) => r.login) ?? [],
     start_sha: payload.pull_request.base.sha,
     target_branch: payload.pull_request.base.ref,
   };

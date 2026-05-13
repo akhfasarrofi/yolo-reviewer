@@ -214,4 +214,16 @@ export class GitLabProvider implements PlatformProvider {
       console.error(`[GitLab] Failed to post MR note: ${res.status}`);
     }
   }
+
+  public async getLatestCommitShaForPath(
+    projectId: number | string,
+    path: string,
+    branch: string,
+  ): Promise<string | null> {
+    const url = `${this.baseUrl(projectId)}/repository/commits?ref_name=${branch}&path=${encodeURIComponent(path)}&per_page=1`;
+    const res = await fetch(url, { headers: this.headers() });
+    if (!res.ok) return null;
+    const data = (await res.json()) as any[];
+    return data[0]?.id ?? null;
+  }
 }

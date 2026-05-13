@@ -71,4 +71,14 @@ export interface PlatformProvider {
   ): Promise<void>;
 
   postMRNote(projectId: number | string, mrIid: number | string, body: string): Promise<void>;
+
+  /**
+   * Returns the SHA of the latest commit that touched the given path on the given branch.
+   * Used for lightweight cache invalidation without fetching full file content.
+   */
+  getLatestCommitShaForPath(
+    projectId: number | string,
+    path: string,
+    branch: string,
+  ): Promise<string | null>;
 }
