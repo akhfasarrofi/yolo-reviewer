@@ -2,7 +2,12 @@ import { callAI } from '@/ai/chat';
 import { getConfig } from '@/config.ts';
 import type { PlatformProvider, ReviewComment } from '@/types';
 
-const skillsCache = new Map<string, string>();
+interface SkillsCacheEntry {
+  sha: string;
+  content: string;
+}
+
+const skillsCache = new Map<string, SkillsCacheEntry>();
 
 /**
  * Loads markdown skill rule files from the TARGET branch of the repository.
@@ -20,16 +25,24 @@ async function loadSkillRules(
   targetBranch: string,
 ): Promise<string> {
   const cacheKey = `${projectId}:${targetBranch}:skills`;
-  const cached = skillsCache.get(cacheKey);
-  if (cached !== undefined) return cached;
-
   const { skillsPath } = getConfig(); // e.g. ".skills"
+
+  // Fetch the latest commit SHA that touched the skills folder (lightweight check)
+  const currentSha = await provider.getLatestCommitShaForPath(projectId, skillsPath, targetBranch);
+
+  const cached = skillsCache.get(cacheKey);
+  if (cached && cached.sha === currentSha) {
+    console.info(`[Yolo] 📦 Skills cache HIT (SHA: ${currentSha?.slice(0, 7)}) — skipping fetch.`);
+    return cached.content;
+  }
+
+  console.info(`[Yolo] 🔄 Skills cache MISS — fetching .skills/ (SHA changed or first load).`);
 
   // Fetch list of .md files from TARGET branch — not from head_sha
   const filePaths = await provider.getSkillFiles(projectId, skillsPath, targetBranch);
 
   if (filePaths.length === 0) {
-    skillsCache.set(cacheKey, '');
+    skillsCache.set(cacheKey, { content: '', sha: currentSha ?? '' });
     return '';
   }
 
@@ -47,7 +60,7 @@ async function loadSkillRules(
   );
 
   const combined = contents.filter(Boolean).join('\n\n---\n\n');
-  skillsCache.set(cacheKey, combined);
+  skillsCache.set(cacheKey, { content: combined, sha: currentSha ?? '' });
   return combined;
 }
 
@@ -63,7 +76,7 @@ function buildSystemInstruction(skillRules: string): string {
   const rules = skillRules.trim() || 'Gunakan standar review umum.';
 
   // List of keys to exclude from system prompt (engine only)
-  const excludeKeys = ['skillsPath', 'features'];
+  const excludeKeys = ['skillsPath', 'features', 'notifications'];
 
   const lines = Object.entries(config)
     .filter(([key]) => !excludeKeys.includes(key))
@@ -119,7 +132,7 @@ ${fileContent}
     rawResponse = await callAI(systemInstruction, userContent);
   } catch (err) {
     console.error(`[Yolo] AI call gagal untuk ${filePath}:`, err);
-    return [];
+    throw err;
   }
 
   // Parse JSON output
@@ -133,6 +146,6 @@ ${fileContent}
     return parsed.comments ?? [];
   } catch {
     console.error(`[Yolo] JSON parse gagal untuk ${filePath}. Raw:`, rawResponse.slice(0, 500));
-    return [];
+    throw new Error(`JSON parse failed for ${filePath}`);
   }
 }

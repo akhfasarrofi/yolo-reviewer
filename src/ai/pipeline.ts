@@ -2,7 +2,9 @@ import { load } from 'js-yaml';
 import { reviewFile } from '@/ai/reviewer';
 import { embedHash, extractExistingHashes, generateHash } from '@/anti-spam/hash';
 import { getConfig } from '@/config';
-import { sendTelegramAlerts } from '@/notifications/telegram';
+import { NotificationManager } from '@/notifications/manager';
+import { TelegramNotificationProvider } from '@/notifications/telegram';
+import { resolveTemplates } from '@/notifications/template';
 import { addLinePrefix, buildParsedDiff, extractDiffContext } from '@/processor/line-prefix';
 import { extractScriptWithLinePreserve } from '@/processor/script-extract';
 import { isTrivialChange, isWhitespaceOnlyChange } from '@/processor/trivial';
@@ -21,7 +23,8 @@ async function loadRepoConfig(
 ): Promise<RepoConfig | null> {
   try {
     const raw = await provider.getFileContent(projectId, REPO_CONFIG_PATH, ref);
-    return load(raw) as RepoConfig;
+    const replacedRaw = raw.replace(/\$\{([^}]+)\}/g, (_, key) => process.env[key] ?? '');
+    return load(replacedRaw) as RepoConfig;
   } catch {
     return null; // File not found or parse error — use server defaults
   }
@@ -34,7 +37,18 @@ export async function runReviewPipeline(
   payload: StandardReviewPayload,
   provider: PlatformProvider,
 ): Promise<{ processed: number; posted: number }> {
-  const { projectId, mrIid, repoName, mrUrl, target_branch } = payload;
+  const {
+    projectId,
+    mrIid,
+    repoName,
+    projectName,
+    repoUrl,
+    projectHomepage,
+    mrUrl,
+    target_branch,
+    assignees,
+    reviewers,
+  } = payload;
   let { base_sha, head_sha, start_sha } = payload;
 
   console.info(`\n[Yolo] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -42,6 +56,8 @@ export async function runReviewPipeline(
   console.info(`[Yolo] 📦 Repository: ${repoName}`);
   console.info(`[Yolo] 🔗 Link:       ${mrUrl}`);
   console.info(`[Yolo] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+  const config = getConfig();
 
   const { diffs, diff_refs: fetchedDiffRefs } = await provider.getMRDiffs(projectId, mrIid);
 
@@ -57,9 +73,22 @@ export async function runReviewPipeline(
     return { posted: 0, processed: 0 };
   }
 
-  // Load per-repo config from `.yolo/config.yml` inside the target repository.
-  // Falls back to null (no overrides) if the file doesn't exist.
+  // Load per-repo config now that head_sha is confirmed.
   const repoConfig = await loadRepoConfig(provider, projectId, head_sha);
+
+  // Initialize Notification Manager with merged templates (per-repo > global)
+  const notificationManager = new NotificationManager();
+
+  if (config.notifications?.telegram) {
+    const telegramTemplates = resolveTemplates(
+      {},
+      config.notifications.telegram.templates,
+      repoConfig?.telegram_templates,
+    );
+    notificationManager.register(
+      new TelegramNotificationProvider(config.notifications.telegram, telegramTemplates),
+    );
+  }
 
   // Branch filter: skip review if target_branch is not in the allowed list.
   const allowedBranches = repoConfig?.filters?.target_branches;
@@ -121,10 +150,28 @@ export async function runReviewPipeline(
     const allNumberedLines = addLinePrefix(processedContent).split('\n');
     const diffContext = extractDiffContext(allNumberedLines, parsedDiff.changedLines);
 
-    console.info(
-      `[Yolo] 🧠 Sending diff of '${filePath}' to AI for analysis... (${parsedDiff.changedLines.size} changed lines)`,
-    );
-    const comments = await reviewFile(provider, diffContext, filePath, projectId, target_branch);
+    let comments: ReviewComment[] = [];
+    try {
+      console.info(
+        `[Yolo] 🧠 Sending diff of '${filePath}' to AI for analysis... (${parsedDiff.changedLines.size} changed lines)`,
+      );
+      comments = await reviewFile(provider, diffContext, filePath, projectId, target_branch);
+    } catch (err) {
+      console.error(`[Yolo] AI Review failed for file ${filePath}`, err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      await notificationManager.sendError({
+        assignees,
+        errorMessage,
+        mrIid,
+        mrUrl,
+        projectHomepage,
+        projectName,
+        repoName,
+        repoUrl,
+        reviewers,
+      });
+      break; // stop processing further files on fatal AI error
+    }
 
     if (comments.length === 0) {
       processedFiles++;
@@ -181,8 +228,6 @@ export async function runReviewPipeline(
     processedFiles++;
   }
 
-  const config = getConfig();
-
   if (config.features.autoResolve) {
     await processAutoResolve(
       provider,
@@ -194,30 +239,62 @@ export async function runReviewPipeline(
     );
   }
 
-  if (config.features.summaryComment && allValidComments.length > 0) {
-    const totalIssues = allValidComments.length;
-    const fileCount = new Set(allValidComments.map((c) => c.file)).size;
+  const lgtmConfig = config.features.lgtm;
+  if (lgtmConfig.enabled && totalPosted === 0 && processedFiles > 0) {
+    const lgtmMessage = repoConfig?.lgtm?.message ?? lgtmConfig.message;
+    await provider.postMRNote(projectId, mrIid, lgtmMessage);
+    console.info(`[Yolo] ✅ LGTM! Posting clean review note.`);
 
-    let summaryBody = `🤖 **Yolo Review Summary**\n\n`;
-    summaryBody += `Menemukan **${totalIssues} issue** di **${fileCount} file** yang melanggar standar (berdasarkan \`.skills/\`).\n`;
-    summaryBody += `Silakan cek inline comment untuk detail dan rekomendasi perbaikannya.`;
-
-    await provider.postMRNote(projectId, mrIid, summaryBody);
-    console.info(`[Yolo] 📝 Posting summary review: ${totalIssues} issues found.`);
+    await notificationManager.sendLgtm({
+      assignees,
+      mrIid,
+      mrUrl,
+      projectHomepage,
+      projectName,
+      repoName,
+      repoUrl,
+      reviewers,
+    });
   }
 
-  // Telegram Notifications — only fires if configured in config.yml
-  const telegramConfig = config.notifications?.telegram;
-  if (telegramConfig && allValidComments.length > 0) {
-    await sendTelegramAlerts(
-      telegramConfig.bot_token,
-      telegramConfig.chat_id,
-      telegramConfig.trigger_categories,
-      repoName,
-      mrUrl,
-      mrIid,
-      allValidComments,
+  if (allValidComments.length > 0) {
+    if (config.features.summaryComment) {
+      const totalIssues = allValidComments.length;
+      const fileCount = new Set(allValidComments.map((c) => c.file)).size;
+
+      let summaryBody = `🤖 **Yolo Review Summary**\n\n`;
+      summaryBody += `Menemukan **${totalIssues} issue** di **${fileCount} file** yang melanggar standar (berdasarkan \`.skills/\`).\n`;
+      summaryBody += `Silakan cek inline comment untuk detail dan rekomendasi perbaikannya.`;
+
+      await provider.postMRNote(projectId, mrIid, summaryBody);
+      console.info(`[Yolo] 📝 Posting summary review: ${totalIssues} issues found.`);
+    }
+
+    // Build category summary
+    const categorySummary: Record<string, number> = {};
+    for (const { comment } of allValidComments) {
+      const cat = comment.category.toLowerCase();
+      categorySummary[cat] = (categorySummary[cat] || 0) + 1;
+    }
+
+    const triggerCategories = config.notifications?.telegram?.trigger_categories?.map((c) =>
+      c.toLowerCase(),
     );
+
+    await notificationManager.sendReviewSummary({
+      assignees,
+      categorySummary,
+      fileCount: new Set(allValidComments.map((c) => c.file)).size,
+      highlightedCategories: triggerCategories,
+      mrIid,
+      mrUrl,
+      projectHomepage,
+      projectName,
+      repoName,
+      repoUrl,
+      reviewers,
+      totalIssues: allValidComments.length,
+    });
   }
 
   console.info(

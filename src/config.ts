@@ -44,16 +44,24 @@ const EnvSchema = z
     }
   });
 
+const TelegramTemplatesSchema = z.object({
+  error: z.string().optional(),
+  lgtm: z.string().optional(),
+  review_summary: z.string().optional(),
+});
+
 const ConfigSchema = z.object({
-  behavior: z.object({
-    avoid_nitpick: z.boolean(),
-    confidence_threshold: z.number().min(0).max(1),
-    diff_only: z.boolean(),
-    no_hallucination: z.boolean(),
-    no_repeat_issue: z.boolean(),
-  }),
   features: z.object({
     autoResolve: z.boolean(),
+    lgtm: z
+      .object({
+        enabled: z.boolean().default(true),
+        message: z.string().default('✅ **LGTM!** No issues found. This PR/MR looks good to go 🚀'),
+      })
+      .default({
+        enabled: true,
+        message: '✅ **LGTM!** No issues found. This PR/MR looks good to go 🚀',
+      }),
     summaryComment: z.boolean(),
   }),
   instructions: z.array(z.string()),
@@ -61,9 +69,24 @@ const ConfigSchema = z.object({
     .object({
       telegram: z
         .object({
-          bot_token: z.string().min(1),
-          chat_id: z.string().min(1),
-          trigger_categories: z.array(z.string()).min(1),
+          bot_token: z.coerce.string().min(1),
+          chat_id: z.coerce.string().min(1),
+          error_topic_id: z
+            .number()
+            .int()
+            .positive()
+            .nullable()
+            .optional()
+            .transform((v) => v ?? undefined),
+          templates: TelegramTemplatesSchema.optional(),
+          topic_id: z
+            .number()
+            .int()
+            .positive()
+            .nullable()
+            .optional()
+            .transform((v) => v ?? undefined),
+          trigger_categories: z.array(z.string()).optional(),
         })
         .optional(),
     })
@@ -101,7 +124,8 @@ async function initConfig(): Promise<AppConfig> {
 
     // 2. Validate config.yml
     const text = await Bun.file(CONFIG_PATH).text();
-    const raw = load(text);
+    const replacedText = text.replace(/\$\{([^}]+)\}/g, (_, key) => process.env[key] ?? '');
+    const raw = load(replacedText);
 
     const configResult = ConfigSchema.safeParse(raw);
     if (!configResult.success) {
@@ -124,9 +148,6 @@ async function initConfig(): Promise<AppConfig> {
     if (err?.code === 'ENOENT') {
       // In CI mode, config.yml is not expected — build a default config from env vars
       if (IS_CI) {
-        console.info(
-          '[Yolo] ℹ️ CI mode detected — no config.yml found, using defaults from environment.',
-        );
         return buildCiConfig();
       }
       console.error('\n\x1b[31m❌ config.yml file not found!\x1b[0m');
@@ -154,14 +175,14 @@ function buildCiConfig(): AppConfig {
   const hasTelegram = !!(telegramBotToken && telegramChatId && telegramCategories?.length);
 
   return {
-    behavior: {
-      avoid_nitpick: true,
-      confidence_threshold: 0.7,
-      diff_only: true,
-      no_hallucination: true,
-      no_repeat_issue: true,
+    features: {
+      autoResolve: false,
+      lgtm: {
+        enabled: true,
+        message: '✅ **LGTM!** No issues found. This PR/MR looks good to go 🚀',
+      },
+      summaryComment: true,
     },
-    features: { autoResolve: false, summaryComment: true },
     instructions: [
       'Only review changed code',
       'Do not repeat issues already commented',
@@ -173,7 +194,7 @@ function buildCiConfig(): AppConfig {
           telegram: {
             bot_token: telegramBotToken!,
             chat_id: telegramChatId!,
-            trigger_categories: telegramCategories!,
+            trigger_categories: telegramCategories,
           },
         }
       : undefined,
@@ -189,14 +210,20 @@ watch(CONFIG_PATH, () => {
   Bun.file(CONFIG_PATH)
     .text()
     .then((text) => {
-      const raw = load(text);
+      // Apply env substitution on reload too
+      const replacedText = text.replace(/\$\{([^}]+)\}/g, (_, key) => process.env[key] ?? '');
+      const raw = load(replacedText);
       const configResult = ConfigSchema.safeParse(raw);
+
       if (configResult.success) {
         _config = configResult.data as AppConfig;
       } else {
         console.warn(
-          '\x1b[33m[Yolo] WARN: Failed to reload config.yml because it is invalid. Using the old config.\x1b[0m',
+          '\x1b[33m[Yolo] WARN: Failed to reload config.yml because it is invalid:\x1b[0m',
         );
+        for (const issue of configResult.error.issues) {
+          console.warn(`  - \x1b[31m${issue.path.join('.')}\x1b[0m: ${issue.message}`);
+        }
       }
     })
     .catch((err: unknown) => {

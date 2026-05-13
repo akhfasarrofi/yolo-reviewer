@@ -3,14 +3,18 @@ export * from '../platforms/types.ts';
 export interface StandardReviewPayload {
   projectId: string | number;
   mrIid: string | number;
-  repoName: string;
-  repoUrl: string;
+  repoName: string; // owner/repo
+  projectName: string; // just repo name
+  repoUrl: string; // full repo url
+  projectHomepage: string; // homepage url
   mrUrl: string;
   base_sha: string;
   head_sha: string;
   start_sha: string;
   /** The branch this PR/MR is targeting (e.g. "main", "develop") */
   target_branch: string;
+  assignees: string[]; // array of names
+  reviewers: string[]; // array of names
 }
 
 /** Per-repository configuration loaded from `.yolo/config.yml` inside the target repo. */
@@ -19,6 +23,16 @@ export interface RepoConfig {
     /** If set, Yolo will only review PRs/MRs targeting these branches. */
     target_branches?: string[];
   };
+  lgtm?: {
+    message?: string;
+  };
+  telegram_templates?: TelegramTemplates;
+}
+
+export interface TelegramTemplates {
+  review_summary?: string;
+  lgtm?: string;
+  error?: string;
 }
 
 export interface GitHubPRWebhook {
@@ -27,6 +41,8 @@ export interface GitHubPRWebhook {
   pull_request: {
     number: number;
     state: string;
+    assignees?: { login: string }[];
+    requested_reviewers?: { login: string }[];
     head: {
       sha: string;
     };
@@ -36,8 +52,10 @@ export interface GitHubPRWebhook {
     };
   };
   repository: {
+    name: string; // just repo name
     full_name: string; // owner/repo
     html_url: string;
+    homepage?: string;
   };
 }
 
@@ -45,8 +63,10 @@ export interface GitLabMRWebhook {
   object_kind: 'merge_request';
   project: {
     id: number;
+    name: string;
     path_with_namespace: string;
     web_url: string;
+    homepage: string;
   };
   object_attributes: {
     id: number;
@@ -64,6 +84,8 @@ export interface GitLabMRWebhook {
     };
     target_branch: string;
   };
+  assignees?: { name: string }[];
+  reviewers?: { name: string }[];
 }
 
 export interface DiffLine {
@@ -93,19 +115,25 @@ export interface ExistingComment {
   discussionId: string;
 }
 
+export interface TelegramConfig {
+  bot_token: string;
+  chat_id: string;
+  topic_id?: number;
+  error_topic_id?: number;
+  trigger_categories?: string[];
+  templates?: TelegramTemplates;
+}
+
 export interface AppConfig {
   skillsPath: string;
   responseLanguage: string;
   features: {
     autoResolve: boolean;
     summaryComment: boolean;
-  };
-  behavior: {
-    diff_only: boolean;
-    no_hallucination: boolean;
-    no_repeat_issue: boolean;
-    avoid_nitpick: boolean;
-    confidence_threshold: number;
+    lgtm: {
+      enabled: boolean;
+      message: string;
+    };
   };
   output: {
     format: string;
@@ -113,11 +141,6 @@ export interface AppConfig {
   };
   instructions: string[];
   notifications?: {
-    telegram?: {
-      bot_token: string;
-      chat_id: string;
-      /** Categories that trigger a Telegram notification (e.g. ["security", "critical"]) */
-      trigger_categories: string[];
-    };
+    telegram?: TelegramConfig;
   };
 }

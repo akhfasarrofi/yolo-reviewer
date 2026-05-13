@@ -16,10 +16,6 @@ import { GitHubProvider } from '@/platforms/github/api';
 import { GitLabProvider } from '@/platforms/gitlab/api';
 import type { PlatformProvider, StandardReviewPayload } from '@/types';
 
-// ─────────────────────────────────────────────────────────
-// Platform Context Resolvers
-// ─────────────────────────────────────────────────────────
-
 /**
  * Builds a StandardReviewPayload from GitHub Actions environment variables.
  * Requires: GITHUB_REPOSITORY, GITHUB_SHA, PR_NUMBER, GITHUB_BASE_REF
@@ -45,13 +41,17 @@ function resolveGitHubPayload(): StandardReviewPayload {
   const repoUrl = `https://github.com/${repo}`;
 
   return {
+    assignees: [], // not available in generic CI env
     base_sha: '', // will be fetched by pipeline via getMRDiffs
     head_sha: headSha!,
     mrIid,
     mrUrl: `${repoUrl}/pull/${mrIid}`,
+    projectHomepage: repoUrl,
     projectId: repo!,
+    projectName: repo!.split('/')[1] || repo!,
     repoName: repo!,
     repoUrl,
+    reviewers: [],
     start_sha: '',
     target_branch: targetBranch!,
   };
@@ -83,21 +83,21 @@ function resolveGitLabPayload(): StandardReviewPayload {
   const projectUrl = `${gitlabUrl}/${repo}`;
 
   return {
+    assignees: [],
     base_sha: '',
     head_sha: headSha!,
     mrIid: iid,
     mrUrl: `${projectUrl}/-/merge_requests/${iid}`,
+    projectHomepage: process.env.CI_PROJECT_URL || projectUrl,
     projectId: repo!,
+    projectName: process.env.CI_PROJECT_NAME || repo!.split('/').pop() || repo!,
     repoName: repo!,
-    repoUrl: projectUrl,
+    repoUrl: process.env.CI_PROJECT_URL || projectUrl,
+    reviewers: [],
     start_sha: '',
     target_branch: targetBranch!,
   };
 }
-
-// ─────────────────────────────────────────────────────────
-// Platform Auto-Detection
-// ─────────────────────────────────────────────────────────
 
 function detectPlatform(): 'github' | 'gitlab' {
   // Allow manual override via env
@@ -114,10 +114,6 @@ function detectPlatform(): 'github' | 'gitlab' {
   );
   process.exit(1);
 }
-
-// ─────────────────────────────────────────────────────────
-// Main
-// ─────────────────────────────────────────────────────────
 
 async function main() {
   console.info('\n🤖 Yolo AI Reviewer — CI Mode\n');

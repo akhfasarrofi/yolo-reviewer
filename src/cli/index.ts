@@ -3,22 +3,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import prompts from 'prompts';
 
-// ─────────────────────────────────────────────────────────
-// File Templates
-// ─────────────────────────────────────────────────────────
-
 const SERVER_CONFIG_TEMPLATE = `skillsPath: ".skills"
 responseLanguage: "{{responseLanguage}}"
 features:
   autoResolve: true
   summaryComment: true
-
-behavior:
-  diff_only: true
-  no_hallucination: true
-  no_repeat_issue: true
-  avoid_nitpick: true
-  confidence_threshold: 0.7
 
 output:
   format: json
@@ -82,10 +71,6 @@ filters:
     - develop
 `;
 
-// ─────────────────────────────────────────────────────────
-// Prompts — organized by group for easy maintenance
-// ─────────────────────────────────────────────────────────
-
 const PLATFORM_QUESTION: prompts.PromptObject = {
   choices: [
     { title: 'GitLab', value: 'gitlab' },
@@ -121,10 +106,32 @@ const GITLAB_QUESTIONS: prompts.PromptObject[] = [
 /** Questions shown only when the user selects GitHub */
 const GITHUB_QUESTIONS: prompts.PromptObject[] = [
   {
+    choices: [
+      { title: 'Personal Access Token (Simple)', value: 'token' },
+      { title: 'GitHub App (Professional)', value: 'app' },
+    ],
+    message: 'Select GitHub Authentication Method',
+    name: 'githubAuthMethod',
+    type: (_prev, values) => (values.platform === 'github' ? 'select' : null),
+  },
+  {
     initial: 'ghp_xxxx',
     message: 'Enter GitHub Personal Access Token',
     name: 'githubToken',
-    type: (_prev, values) => (values.platform === 'github' ? 'text' : null),
+    type: (_prev, values) =>
+      values.platform === 'github' && values.githubAuthMethod === 'token' ? 'text' : null,
+  },
+  {
+    message: 'Enter GitHub App ID',
+    name: 'githubAppId',
+    type: (_prev, values) =>
+      values.platform === 'github' && values.githubAuthMethod === 'app' ? 'text' : null,
+  },
+  {
+    message: 'Enter GitHub App Private Key (replace newlines with \\n)',
+    name: 'githubAppPrivateKey',
+    type: (_prev, values) =>
+      values.platform === 'github' && values.githubAuthMethod === 'app' ? 'text' : null,
   },
   {
     message: 'Enter GitHub Webhook Secret (Recommended for security)',
@@ -220,6 +227,16 @@ const TELEGRAM_QUESTIONS: prompts.PromptObject[] = [
     type: (_prev, values) => (values.enableTelegram ? 'text' : null),
   },
   {
+    message: 'Enter Telegram Topic ID for reviews (optional, leave empty if none)',
+    name: 'telegramTopicId',
+    type: (_prev, values) => (values.enableTelegram ? 'text' : null),
+  },
+  {
+    message: 'Enter Telegram Topic ID for AI errors (optional, leave empty if none)',
+    name: 'telegramErrorTopicId',
+    type: (_prev, values) => (values.enableTelegram ? 'text' : null),
+  },
+  {
     initial: 'security',
     message: 'Enter trigger categories (comma-separated, e.g. security,critical)',
     name: 'telegramCategories',
@@ -227,15 +244,28 @@ const TELEGRAM_QUESTIONS: prompts.PromptObject[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────
-// .env Builder
-// ─────────────────────────────────────────────────────────
-
 function buildEnvContent(response: Record<string, any>): string {
-  const platformBlock =
-    response.platform === 'gitlab'
-      ? `# GitLab Platform\nGITLAB_URL=${response.gitlabUrl}\nGITLAB_TOKEN=${response.gitlabToken}\nGITLAB_WEBHOOK_SECRET=${response.gitlabWebhookSecret || ''}`
-      : `# GitHub Platform\nGITHUB_TOKEN=${response.githubToken}\nGITHUB_WEBHOOK_SECRET=${response.githubWebhookSecret || ''}\nGITHUB_API_URL=https://api.github.com`;
+  let platformBlock = '';
+
+  if (response.platform === 'gitlab') {
+    platformBlock = `# GitLab Platform
+GITLAB_URL=${response.gitlabUrl}
+GITLAB_TOKEN=${response.gitlabToken}
+GITLAB_WEBHOOK_SECRET=${response.gitlabWebhookSecret || ''}`;
+  } else {
+    platformBlock = `# GitHub Platform
+GITHUB_WEBHOOK_SECRET=${response.githubWebhookSecret || ''}
+GITHUB_API_URL=https://api.github.com`;
+
+    if (response.githubAuthMethod === 'app') {
+      platformBlock += `
+GITHUB_APP_ID=${response.githubAppId}
+GITHUB_PRIVATE_KEY="${response.githubAppPrivateKey}"`;
+    } else {
+      platformBlock += `
+GITHUB_TOKEN=${response.githubToken}`;
+    }
+  }
 
   const aiBlock = `# AI Provider
 AI_BASE_URL=${response.aiBaseUrl}
@@ -244,7 +274,19 @@ AI_MODEL=${response.aiModel}
 AI_TEMPERATURE=${response.aiTemperature}
 AI_TOP_P=${response.aiTopP}`;
 
-  return [platformBlock, aiBlock, '# Server\nPORT=3000'].join('\n\n');
+  const serverBlock = '# Server\nPORT=3000';
+
+  let telegramBlock = '';
+
+  if (response.enableTelegram) {
+    telegramBlock = `# Telegram Notifications
+TELEGRAM_BOT_TOKEN=${response.telegramBotToken}
+TELEGRAM_CHAT_ID=${response.telegramChatId}
+TELEGRAM_TOPIC_ID=${response.telegramTopicId || ''}
+TELEGRAM_ERROR_TOPIC_ID=${response.telegramErrorTopicId || response.telegramTopicId || ''}`;
+  }
+
+  return [platformBlock, aiBlock, serverBlock, telegramBlock].filter(Boolean).join('\n\n');
 }
 
 /**
@@ -261,18 +303,36 @@ function buildTelegramConfigBlock(response: Record<string, any>): string {
     .map((c) => `      - ${c}`)
     .join('\n');
 
+  const topicBlock = response.telegramTopicId ? `\n    topic_id: \${TELEGRAM_TOPIC_ID}` : '';
+  const errorTopicBlock = response.telegramErrorTopicId
+    ? `\n    error_topic_id: \${TELEGRAM_ERROR_TOPIC_ID}`
+    : '';
+
   return `
 notifications:
   telegram:
-    bot_token: "${response.telegramBotToken}"
-    chat_id: "${response.telegramChatId}"
+    bot_token: \${TELEGRAM_BOT_TOKEN}
+    chat_id: \${TELEGRAM_CHAT_ID}${topicBlock}${errorTopicBlock}
     trigger_categories:
-${categories}`;
-}
+${categories}
+    templates:
+      review_summary: |
+        🔴 *Review Finished*
+        *Repo:* [\\\\#{{project_name}}]({{project_homepage}})
+        *PR/MR:* [\\\\#{{mr_id}}]({{mr_url}})
+        *Assignee:* {{assignee}}
+        *Reviewers:* {{reviewers}}
+        Found *{{total_issues}} issues* in *{{file_count}} files*
 
-// ─────────────────────────────────────────────────────────
-// Main
-// ─────────────────────────────────────────────────────────
+      lgtm: |
+        ✅ *LGTM\\!*
+        *Repo:* {{project_name}} — *PR/MR:* [\\\\#{{mr_id}}]({{mr_url}})
+
+      error: |
+        ❌ *AI Review Error*
+        *Repo:* {{project_name}}
+        *Error:* {{error}}`;
+}
 
 async function main() {
   console.info('\n🤖 Welcome to YOLO AI Reviewer CLI!');
@@ -310,18 +370,7 @@ async function main() {
   const yoloDir = resolve(process.cwd(), '.yolo');
   mkdirSync(yoloDir, { recursive: true });
   writeFileSync(resolve(yoloDir, 'config.yml'), REPO_CONFIG_TEMPLATE);
-
   console.info('\n✅ Setup completed successfully!');
-  console.info('📝 Files generated:');
-  console.info('   - .env              (server credentials & AI config)');
-  console.info('   - config.yml        (server-level AI behavior)');
-  console.info(
-    '   - .yolo/config.yml  (per-repo branch filters — commit this to your target repos)',
-  );
-  if (response.enableTelegram) {
-    console.info('   📨 Telegram notifications configured in config.yml');
-  }
-  console.info("\n🚀 Run 'bun dev' or 'bun start' to start the server.");
 }
 
 main().catch(console.error);
