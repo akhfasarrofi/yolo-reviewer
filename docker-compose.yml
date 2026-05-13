@@ -1,7 +1,6 @@
 services:
   yolo:
-    image: yolo-reviewer:latest
-    build: .
+    image: ghcr.io/akhfasarrofi/yolo-reviewer:latest
     container_name: yolo-reviewer
     ports:
       - "${PORT:-3000}:3000"

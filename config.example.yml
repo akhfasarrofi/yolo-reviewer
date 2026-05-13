@@ -1,0 +1,68 @@
+skillsPath: ".skills"
+responseLanguage: "English"
+features:
+  autoResolve: true
+  summaryComment: true
+
+output:
+  format: json
+  schema:
+    comments:
+      type: array
+      items:
+        line:
+          type: integer
+          description: >
+            Line number in the diff where the issue is found.
+        category:
+          type: string
+          description: >
+            Issue category (e.g. security, performance, clean-code, bug, style).
+        issue:
+          type: string
+          description: >
+            Description of the issue based on active skill rules.
+        suggestion:
+          type: string
+          description: >
+            Actionable and clear technical solution.
+        replacementCode:
+          type: string
+          required: false
+          description: >
+            Optional direct code replacement.
+
+# Telegram Notifications (Optional)
+# notifications:
+#   telegram:
+#     bot_token: ${TELEGRAM_BOT_TOKEN}
+#     chat_id: ${TELEGRAM_CHAT_ID}
+#     topic_id: ${TELEGRAM_TOPIC_ID}
+#     error_topic_id: ${TELEGRAM_ERROR_TOPIC_ID}
+#     trigger_categories:
+#       - security
+#     templates:
+#       review_summary: |
+#         🔴 *Review Finished*
+#         *Repo:* [\#{{project_name}}]({{project_homepage}})
+#         *PR/MR:* [\#{{mr_id}}]({{mr_url}})
+#         *Assignee:* {{assignee}}
+#         *Reviewers:* {{reviewers}}
+#         Found *{{total_issues}} issues* in *{{file_count}} files*
+
+#       lgtm: |
+#         ✅ *LGTM\!*
+#         *Repo:* {{project_name}} — *PR/MR:* [\#{{mr_id}}]({{mr_url}})
+
+#       error: |
+#         ❌ *AI Review Error*
+#         *Repo:* {{project_name}}
+#         *Error:* {{error}}
+
+instructions:
+  - Only review changed code
+  - Do not review unchanged code
+  - Do not repeat issues already fixed
+  - Do not move old issues to nearby lines
+  - Do not force finding issues
+  - If no issues found, return empty issues array

@@ -12,11 +12,15 @@ Yolo acts as a tireless, automated code reviewer. When a developer opens a Pull 
 - 🧠 **AI Agnostic** — Bring your own AI: OpenAI, Anthropic, Gemini, or any self-hosted LLM (Ollama, etc).
 - 🛡️ **Skill-Based Rules** — Each repository teaches Yolo what to look for via `.skills/` markdown files. No hardcoded rules.
 - 🌿 **Per-Repo Configuration** — Each repo controls its own branch filters via `.yolo/config.yml`.
-- 📨 **Telegram Alerts** — Get notified instantly for high-priority issues (e.g. security violations).
+- 📨 **Telegram Alerts** — Get notified for issues, LGTM, and AI errors. Supports Forum Topics.
+- ✅ **LGTM Detection** — Post clean review when no issues found, customizable per-repo.
+- 🔕 **Error Alerts** — Get notified on Telegram when AI fails or runs out of quota.
+- 📝 **Custom Templates** — Customize Telegram message format globally or per-repo.
+- ⚡ **Skills Cache** — Smart SHA-based cache prevents redundant `.skills` fetches.
 - 🔄 **Auto-Resolve** — Old comments are automatically resolved when the issue is fixed in a follow-up commit.
 - 🚫 **Anti-Spam** — Cryptographic hashing prevents duplicate comments on the same line.
 - ⚡ **Hot-Reload Config** — Edit `config.yml` while the server runs — no restart needed.
-- 🐳 **Docker Ready** — Self-host with a single `docker compose up`.
+- 🐳 **Docker Ready** — Pull directly from GHCR with a single `docker compose up`.
 - 🚀 **CI/CD Mode** — Run via `npx yolo-run` directly inside GitHub Actions or GitLab CI — no server needed.
 
 ---
@@ -41,15 +45,25 @@ sequenceDiagram
 
     Yolo->>GL: Fetch .yolo/config.yml (branch filter)
     Yolo->>GL: Fetch changed file diffs
-    Yolo->>GL: Fetch .skills/*.md (review rules)
+    
+    Yolo->>GL: Check latest commit SHA for .skills/
+    alt SHA changed or cache miss
+        Yolo->>GL: Fetch .skills/*.md (review rules)
+    end
 
     Yolo->>AI: Send diff + skill rules
     AI-->>Yolo: JSON comments (line, category, issue, suggestion)
 
-    Yolo->>GL: Post inline comments on PR/MR diff
+    alt has comments
+        Yolo->>GL: Post inline comments on PR/MR diff
+        Yolo->>TG: Send Review Summary
+    else no comments
+        Yolo->>GL: Post LGTM note
+        Yolo->>TG: Send LGTM message
+    end
 
-    opt category matches trigger_categories
-        Yolo->>TG: Send alert message
+    opt AI fails
+        Yolo->>TG: Send Error Alert
     end
 ```
 
@@ -195,16 +209,27 @@ For production, deploy to a VPS and point your domain to port 3000.
 
 ### Step 2B — Run with Docker Compose
 
+Download the required setup files into a new directory:
+
 ```bash
-# Clone this repo
-git https://github.com/akhfasarrofi/yolo-reviewer
-cd yolo-reviewer
+mkdir yolo-reviewer && cd yolo-reviewer
 
-# Run the setup wizard
-npx yolo-reviewer init
+# Download the necessary files
+curl -O https://raw.githubusercontent.com/akhfasarrofi/yolo-reviewer/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/akhfasarrofi/yolo-reviewer/main/config.example.yml
+curl -O https://raw.githubusercontent.com/akhfasarrofi/yolo-reviewer/main/.env.example
 
-# Build and start
-docker compose up -d --build
+# Setup your credentials
+cp .env.example .env
+nano .env
+
+# Setup your config
+cp config.example.yml config.yml
+nano config.yml
+
+# Pull from GHCR and start
+docker compose pull
+docker compose up -d
 
 # Check logs
 docker compose logs -f yolo
@@ -338,9 +363,9 @@ If `.skills/` is missing, Yolo falls back to general best-practice review.
 
 ---
 
-## Per-Repo Branch Filter (`.yolo/config.yml`)
+## Per-Repo Override (`.yolo/config.yml`)
 
-Place a `.yolo/config.yml` in each repository to control which target branches trigger a review. Yolo fetches this file from the repo before starting.
+Place a `.yolo/config.yml` in each repository to override global server settings for that specific repo. Yolo fetches this file before starting the review.
 
 ```yaml
 # .yolo/config.yml (commit this to your target repo)
@@ -348,9 +373,17 @@ filters:
   target_branches:
     - main
     - develop
+
+lgtm:
+  message: "✅ All Good! No violations. Ready to merge! 🎉"
+
+telegram_templates:
+  review_summary: |
+    🚨 *Review Done* — {{repo}} PR\#{{mr_id}}
+    {{total_issues}} issues in {{file_count}} files
 ```
 
-If this file is missing, Yolo reviews all branches.
+If this file is missing, Yolo falls back to the server's global `config.yml`.
 
 ---
 
@@ -376,16 +409,24 @@ Get real-time alerts when the AI finds issues in specific categories.
 ```yaml
 notifications:
   telegram:
-    bot_token: "YOUR_BOT_TOKEN"
-    chat_id: "YOUR_CHAT_ID"
-    trigger_categories:
-      - security # alert when AI flags a security violation
-      - critical # alert for anything in .skills/critical.md
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID} # Support supergroup/chat ID
+    topic_id: ${TELEGRAM_TOPIC_ID}            # optional: Send to specific Forum Topic ID
+    error_topic_id: ${TELEGRAM_ERROR_TOPIC_ID}      # optional: Send AI errors to a different topic
+    trigger_categories:      # optional: leave empty to highlight nothing
+      - security 
 ```
 
-### How the AI knows the category
+### Summary & Highlights
 
-The AI assigns a `category` to each comment based on which `.skills/` rule was violated. A violation of a rule in `.skills/security.md` gets `category: "security"`. You decide which categories trigger a Telegram message via `trigger_categories`.
+Yolo sends **1 summary message** per review. It doesn't spam you for every single issue. 
+If you set `trigger_categories: [security]`, any issues matching that category will be highlighted with a ⚠️ in the summary message, while other issues will be listed normally.
+
+### Custom Templates
+
+You can customize the Telegram message format in `config.yml` globally, or override it per-repo via `.yolo/config.yml`.
+
+Available variables: `{{repo}}`, `{{mr_url}}`, `{{mr_id}}`, `{{total_issues}}`, `{{file_count}}`, `{{error}}`.
 
 ---
 
@@ -398,24 +439,41 @@ responseLanguage: "English" # or "Indonesian"
 features:
   autoResolve: true # auto-resolve old comments when the issue is fixed
   summaryComment: true # post a summary at the end of each review
-
-behavior:
-  diff_only: true # only review changed lines
-  no_hallucination: true # instruct AI not to invent issues
-  no_repeat_issue: true # skip issues already commented
-  avoid_nitpick: true # skip stylistic nitpicks
-  confidence_threshold: 0.7 # minimum AI confidence to post a comment
+  lgtm:
+    enabled: true
+    message: "✅ **LGTM!** No issues found."
 
 notifications: # optional
   telegram:
-    bot_token: "..."
-    chat_id: "..."
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
+    topic_id: ${TELEGRAM_TOPIC_ID}
+    error_topic_id: ${TELEGRAM_ERROR_TOPIC_ID}
     trigger_categories:
       - security
+    templates:
+      review_summary: "..."
+      lgtm: "..."
+      error: "..."
 ```
 
 Changes to this file are picked up immediately while the server runs.
 
+---
+
+## Troubleshooting
+
+#### ❌ GitHub Error 403 (Forbidden)
+If you see a `403 Forbidden` error when Yolo tries to fetch file contents or post comments, it usually means the GitHub App doesn't have enough permissions or hasn't been properly installed on the repository.
+
+**Solution:**
+1.  **Check Permissions:** Go to your **GitHub App Settings** → **Permissions & events** and ensure:
+    *   `Contents`: **Read-only**
+    *   `Pull requests`: **Read & Write**
+2.  **Install/Configure App:**
+    *   Go to the target **Repository Settings** → **GitHub Apps**.
+    *   Find your Yolo Bot App and click **Configure**.
+    *   Ensure the app is installed for the repository and any "Pending Requests" are accepted.
 ---
 
 ## License
